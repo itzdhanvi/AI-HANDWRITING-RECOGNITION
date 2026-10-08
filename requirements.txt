@@ -1,0 +1,8 @@
+Flask
+tensorflow
+tensorflow-datasets
+numpy<2.2
+pandas
+scikit-learn
+opencv-python
+Pillow

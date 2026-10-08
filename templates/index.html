@@ -1,0 +1,625 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>InkMind | AI Handwriting Recognition</title>
+
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+<style>
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #ffffff;
+}
+
+/* LOADING SCREEN */
+#loader {
+    position: fixed;
+    inset: 0;
+    background: #ffffff;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s ease;
+}
+
+.load {
+    text-align: center;
+    color: #475569;
+    font-size: 14px;
+}
+
+#loader svg {
+    width: 85px;
+    height: 85px;
+    margin-bottom: 15px;
+}
+
+/* MAIN APPLICATION */
+.app {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    background: #ffffff;
+}
+
+/* TOP NAVIGATION */
+.top {
+    height: 64px;
+    border-bottom: 1px solid #e8edf3;
+    display: flex;
+    align-items: center;
+    padding: 0 22px;
+    gap: 12px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    background: #ffffff;
+}
+
+/* LOGO */
+.logo {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 13px;
+    background: #e8f5f5;
+}
+
+.logo svg {
+    width: 33px;
+    height: 33px;
+}
+
+.brand-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.brand {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #172b4d;
+}
+
+.brand .accent {
+    color: #0d9488;
+}
+
+.hint {
+    color: #8490a3;
+    font-size: 11px;
+    letter-spacing: 0.2px;
+}
+
+/* DRAWING CANVAS */
+#canvas {
+    position: absolute;
+    top: 64px;
+    bottom: 78px;
+    left: 0;
+    width: 100%;
+    height: calc(100vh - 142px);
+    touch-action: none;
+    cursor: crosshair;
+    background: #ffffff;
+}
+
+/* BOTTOM TOOLBAR */
+.bottom {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 78px;
+    z-index: 4;
+    border-top: 1px solid #e8edf3;
+    background: #ffffff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px;
+}
+
+/* BUTTONS */
+button {
+    border: 0;
+    border-radius: 11px;
+    padding: 13px 23px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease,
+                transform 0.2s ease,
+                opacity 0.2s ease;
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+#save {
+    background: #172b4d;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(23, 43, 77, 0.12);
+}
+
+#save:hover:not(:disabled) {
+    background: #243f6a;
+}
+
+#clear {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+#clear:hover {
+    background: #e2e8f0;
+}
+
+#view {
+    display: none;
+    background: #e0f2f1;
+    color: #0f766e;
+}
+
+#view:hover {
+    background: #ccfbf1;
+}
+
+/* STATUS MESSAGE */
+#status {
+    display: none;
+    position: absolute;
+    z-index: 6;
+    bottom: 91px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #172b4d;
+    color: #ffffff;
+    padding: 11px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    max-width: 90%;
+    width: max-content;
+    text-align: center;
+    line-height: 1.5;
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.12);
+    overflow-wrap: anywhere;
+}
+
+/* MOBILE RESPONSIVENESS */
+@media (max-width: 500px) {
+    .top {
+        height: 60px;
+        padding: 0 13px;
+        gap: 10px;
+    }
+
+    .logo {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+    }
+
+    .logo svg {
+        width: 30px;
+        height: 30px;
+    }
+
+    .brand {
+        font-size: 16px;
+    }
+
+    .hint {
+        font-size: 10px;
+    }
+
+    #canvas {
+        top: 60px;
+        height: calc(100vh - 138px);
+    }
+
+    .bottom {
+        height: 78px;
+        gap: 8px;
+    }
+
+    button {
+        padding: 12px 15px;
+        font-size: 12px;
+    }
+
+    #status {
+        bottom: 87px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loader">
+    <div class="load">
+
+        <svg viewBox="0 0 100 100"
+             xmlns="http://www.w3.org/2000/svg">
+
+            <circle cx="50" cy="50" r="34"
+                    fill="none"
+                    stroke="#e2e8f0"
+                    stroke-width="7"/>
+
+            <path d="M50 16 A34 34 0 0 1 84 50"
+                  fill="none"
+                  stroke="#0d9488"
+                  stroke-width="7"
+                  stroke-linecap="round">
+
+                <animateTransform
+                    attributeName="transform"
+                    type="rotate"
+                    from="0 50 50"
+                    to="360 50 50"
+                    dur="1s"
+                    repeatCount="indefinite"/>
+            </path>
+        </svg>
+
+        <div>Preparing your handwriting workspace...</div>
+
+    </div>
+</div>
+
+
+<!-- APPLICATION -->
+<div class="app">
+
+    <!-- HEADER WITH LOGO -->
+    <header class="top">
+
+        <div class="logo" aria-label="InkMind logo">
+
+            <svg viewBox="0 0 40 40"
+                 fill="none"
+                 xmlns="http://www.w3.org/2000/svg">
+
+                <!-- Neural network connections -->
+                <path d="M9 11 L17 17 L28 10
+                         M17 17 L29 26 L15 31"
+                      stroke="#0D9488"
+                      stroke-width="2.2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"/>
+
+                <!-- Network nodes -->
+                <circle cx="9" cy="11" r="3"
+                        fill="#0D9488"/>
+
+                <circle cx="28" cy="10" r="3"
+                        fill="#0D9488"/>
+
+                <circle cx="29" cy="26" r="3"
+                        fill="#0D9488"/>
+
+                <circle cx="15" cy="31" r="3"
+                        fill="#0D9488"/>
+
+                <!-- Pen nib -->
+                <path d="M17 17 L23 13 L21 21 Z"
+                      fill="#F59E0B"
+                      stroke="#F59E0B"
+                      stroke-linejoin="round"/>
+
+                <path d="M17 17 L21 21"
+                      stroke="#FFFFFF"
+                      stroke-width="1.5"
+                      stroke-linecap="round"/>
+
+            </svg>
+
+        </div>
+
+        <div class="brand-wrap">
+
+            <div class="brand">
+                Ink<span class="accent">Mind</span>
+            </div>
+
+            <div class="hint">
+                AI HANDWRITING RECOGNITION
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <!-- FULL-PAGE WRITING CANVAS -->
+    <canvas id="canvas"
+            aria-label="Handwriting canvas"></canvas>
+
+
+    <!-- STATUS MESSAGE -->
+    <div id="status" role="status" aria-live="polite"></div>
+
+
+    <!-- BOTTOM BUTTONS -->
+    <footer class="bottom">
+
+        <button id="clear" type="button">
+            Clear
+        </button>
+
+        <button id="save" type="button">
+            Save Note
+        </button>
+
+        <button id="view"
+                type="button"
+                onclick="window.location.href='/notes'">
+            View Notes
+        </button>
+
+    </footer>
+
+</div>
+
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const statusBox = document.getElementById("status");
+const saveButton = document.getElementById("save");
+const clearButton = document.getElementById("clear");
+const viewButton = document.getElementById("view");
+const loader = document.getElementById("loader");
+
+let drawing = false;
+let lastX = 0;
+let lastY = 0;
+let hasInk = false;
+let statusTimer = null;
+
+
+/* CANVAS INITIALIZATION */
+function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    // Preserve existing handwriting during resize.
+    let previous = null;
+
+    if (canvas.width > 0 && canvas.height > 0) {
+        previous = document.createElement("canvas");
+        previous.width = canvas.width;
+        previous.height = canvas.height;
+        previous.getContext("2d").drawImage(canvas, 0, 0);
+    }
+
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    if (previous) {
+        ctx.drawImage(
+            previous,
+            0, 0, previous.width, previous.height,
+            0, 0, rect.width, rect.height
+        );
+    }
+}
+
+
+/* POINTER POSITION */
+function getPosition(event) {
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+    };
+}
+
+
+/* START WRITING */
+canvas.addEventListener("pointerdown", function(event) {
+    if (event.button !== undefined && event.button !== 0) {
+        return;
+    }
+
+    event.preventDefault();
+
+    drawing = true;
+
+    const point = getPosition(event);
+
+    lastX = point.x;
+    lastY = point.y;
+
+    canvas.setPointerCapture(event.pointerId);
+
+    // Draw a dot for a single tap.
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fill();
+
+    hasInk = true;
+});
+
+
+/* CONTINUE WRITING */
+canvas.addEventListener("pointermove", function(event) {
+    if (!drawing) return;
+
+    event.preventDefault();
+
+    const point = getPosition(event);
+
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+
+    lastX = point.x;
+    lastY = point.y;
+
+    hasInk = true;
+});
+
+
+/* STOP WRITING */
+function stopDrawing() {
+    drawing = false;
+}
+
+canvas.addEventListener("pointerup", stopDrawing);
+canvas.addEventListener("pointercancel", stopDrawing);
+canvas.addEventListener("lostpointercapture", stopDrawing);
+
+
+/* CLEAR CANVAS */
+function clearCanvas() {
+    const rect = canvas.getBoundingClientRect();
+
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    hasInk = false;
+
+    showMessage("Canvas cleared. Start writing again.");
+}
+
+clearButton.addEventListener("click", clearCanvas);
+
+
+/* STATUS MESSAGE */
+function showMessage(message) {
+    statusBox.textContent = message;
+    statusBox.style.display = "block";
+
+    if (statusTimer) {
+        clearTimeout(statusTimer);
+    }
+
+    statusTimer = setTimeout(function() {
+        statusBox.style.display = "none";
+    }, 4500);
+}
+
+
+/* SAVE AND RECOGNIZE HANDWRITING */
+saveButton.addEventListener("click", async function() {
+
+    if (!hasInk) {
+        showMessage("Please write something before saving.");
+        return;
+    }
+
+    saveButton.disabled = true;
+    clearButton.disabled = true;
+
+    saveButton.textContent = "Recognising...";
+
+    try {
+        const image = canvas.toDataURL("image/png");
+
+        const response = await fetch("/save", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                image: image
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+            throw new Error(
+                result.error || "Could not recognize handwriting."
+            );
+        }
+
+        viewButton.style.display = "inline-block";
+
+        const recognizedText = result.text || "[No text recognized]";
+
+        showMessage(
+            "Note saved successfully! Recognized text: " +
+            recognizedText +
+            " | Confidence: " +
+            result.confidence +
+            "%"
+        );
+
+    } catch (error) {
+        showMessage(error.message || "Something went wrong.");
+    } finally {
+        saveButton.disabled = false;
+        clearButton.disabled = false;
+        saveButton.textContent = "Save Note";
+    }
+});
+
+
+/* RESPONSIVE CANVAS */
+window.addEventListener("resize", resizeCanvas);
+
+resizeCanvas();
+
+
+/* LOADING SCREEN */
+window.addEventListener("load", function() {
+    setTimeout(function() {
+        loader.style.opacity = "0";
+
+        setTimeout(function() {
+            loader.remove();
+        }, 500);
+
+    }, 500);
+});
+</script>
+
+</body>
+</html>
