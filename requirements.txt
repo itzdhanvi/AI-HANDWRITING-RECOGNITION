@@ -7,3 +7,4 @@ scikit-learn
 opencv-python
 Pillow
 gunicorn
+opencv-python-headless
