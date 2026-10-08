@@ -6,3 +6,4 @@ pandas
 scikit-learn
 opencv-python
 Pillow
+gunicorn
