@@ -1,26 +1,27 @@
-
-from flask import Flask, render_template, request, jsonify
-from pathlib import Path
-from datetime import datetime
+import os
 import base64
 import json
 import uuid
-
-import cv2
-
-import base64
-import uuid
+from pathlib import Path
 from datetime import datetime
 
 import cv2
 import numpy as np
-from flask import request, jsonify
-import numpy as np
 import tensorflow as tf
+from flask import Flask, render_template, request, jsonify
 
 BASE = Path(__file__).resolve().parent
 MODEL_PATH = BASE / "models" / "handwriting_cnn.keras"
-NOTES_PATH = BASE / "data" / "notes.json"
+
+# Use a persistent disk path on Render when configured.
+# Locally, store notes in the project's data folder.
+import os
+
+STORAGE_DIR = Path(
+    os.environ.get("STORAGE_DIR", str(BASE / "data"))
+)
+
+NOTES_PATH = STORAGE_DIR / "notes.json"
 
 app = Flask(__name__)
 
@@ -56,26 +57,75 @@ else:
 # Notes storage
 # --------------------------------------------------
 
-def load_notes():
-    if not NOTES_PATH.exists():
-        return []
+# def load_notes():
+#     if not NOTES_PATH.exists():
+#         return []
 
+#     try:
+#         return json.loads(
+#             NOTES_PATH.read_text(encoding="utf-8")
+#         )
+#     except (json.JSONDecodeError, OSError):
+#         return []
+
+
+# def save_notes(notes):
+#     NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
+#     NOTES_PATH.write_text(
+#         json.dumps(notes, indent=2, ensure_ascii=False),
+#         encoding="utf-8"
+#     )
+
+# --------------------------------------------------
+# Notes storage
+# --------------------------------------------------
+
+def load_notes():
     try:
-        return json.loads(
-            NOTES_PATH.read_text(encoding="utf-8")
-        )
+        if not NOTES_PATH.exists():
+            return []
+
+        content = NOTES_PATH.read_text(encoding="utf-8")
+
+        if not content.strip():
+            return []
+
+        notes = json.loads(content)
+
+        if not isinstance(notes, list):
+            app.logger.error("Notes file must contain a JSON list.")
+            return []
+
+        return notes
+
     except (json.JSONDecodeError, OSError):
+        app.logger.exception(
+            "Could not read notes from %s", NOTES_PATH
+        )
         return []
 
 
 def save_notes(notes):
-    NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    NOTES_PATH.write_text(
-        json.dumps(notes, indent=2, ensure_ascii=False),
-        encoding="utf-8"
-    )
+    try:
+        NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+        # Write to a temporary file before replacing the original.
+        temp_path = NOTES_PATH.with_suffix(".tmp")
 
+        temp_path.write_text(
+            json.dumps(notes, indent=2, ensure_ascii=False),
+            encoding="utf-8"
+        )
+
+        temp_path.replace(NOTES_PATH)
+
+        app.logger.info("Notes saved successfully to %s", NOTES_PATH)
+
+    except OSError:
+        app.logger.exception(
+            "Failed to write notes to %s", NOTES_PATH
+        )
+        raise
 # --------------------------------------------------
 # Image processing
 # --------------------------------------------------
