@@ -7,6 +7,4 @@ scikit-learn
 opencv-python
 Pillow
 gunicorn
-opencv-python-headless
-
-opencv-python-headless
+opencv-python-headless==4.12.0.88
