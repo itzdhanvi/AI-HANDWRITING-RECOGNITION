@@ -547,7 +547,8 @@ function showMessage(message) {
 
 
 /* SAVE AND RECOGNIZE HANDWRITING */
-saveButton.addEventListener("click", async function() {
+
+saveButton.addEventListener("click", async function () {
 
     if (!hasInk) {
         showMessage("Please write something before saving.");
@@ -556,7 +557,6 @@ saveButton.addEventListener("click", async function() {
 
     saveButton.disabled = true;
     clearButton.disabled = true;
-
     saveButton.textContent = "Recognising...";
 
     try {
@@ -572,34 +572,84 @@ saveButton.addEventListener("click", async function() {
             })
         });
 
-        const result = await response.json();
+        // Read the response as text first to avoid
+        // "Unexpected end of JSON input".
+        const responseText = await response.text();
 
-        if (!response.ok || !result.ok) {
+        if (!responseText.trim()) {
+            throw new Error(
+                "The server returned an empty response. Check the Render logs."
+            );
+        }
+
+        let result;
+
+        try {
+            result = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error(
+                "Invalid JSON response from /save:",
+                responseText
+            );
+
+            throw new Error(
+                "Invalid server response. Check the Render logs."
+            );
+        }
+
+        if (!response.ok) {
+            throw new Error(
+                result.error ||
+                `Server error: ${response.status}`
+            );
+        }
+
+        if (!result.ok) {
             throw new Error(
                 result.error || "Could not recognize handwriting."
             );
         }
 
+        // Show View Notes after successful saving.
         viewButton.style.display = "inline-block";
 
-        const recognizedText = result.text || "[No text recognized]";
+        const recognizedText =
+            result.text || "[No text recognized]";
+
+        // Supports confidence returned as either 0–1 or 0–100.
+        const confidence = Number(result.confidence);
+
+        const confidenceText = Number.isFinite(confidence)
+            ? (
+                confidence <= 1
+                    ? (confidence * 100).toFixed(1)
+                    : confidence.toFixed(1)
+              ) + "%"
+            : "Unavailable";
 
         showMessage(
             "Note saved successfully! Recognized text: " +
             recognizedText +
             " | Confidence: " +
-            result.confidence +
-            "%"
+            confidenceText
         );
 
     } catch (error) {
-        showMessage(error.message || "Something went wrong.");
+        console.error("Save Note error:", error);
+
+        showMessage(
+            error.message || "Something went wrong. Please try again."
+        );
+
     } finally {
         saveButton.disabled = false;
         clearButton.disabled = false;
         saveButton.textContent = "Save Note";
     }
+
 });
+```
+
 
 
 /* RESPONSIVE CANVAS */

@@ -7,6 +7,14 @@ import json
 import uuid
 
 import cv2
+
+import base64
+import uuid
+from datetime import datetime
+
+import cv2
+import numpy as np
+from flask import request, jsonify
 import numpy as np
 import tensorflow as tf
 
@@ -384,82 +392,183 @@ def home():
     return render_template("index.html")
 
 
+# @app.post("/save")
+# def save():
+#     payload = request.get_json(silent=True) or {}
+#     data = payload.get("image", "")
+
+#     if not isinstance(data, str) or "," not in data:
+#         return jsonify(
+#             ok=False,
+#             error="Canvas image is missing."
+#         ), 400
+
+#     try:
+#         encoded = data.split(",", 1)[1]
+#         raw = base64.b64decode(encoded, validate=True)
+#     except (ValueError, base64.binascii.Error):
+#         return jsonify(
+#             ok=False,
+#             error="Invalid canvas image data."
+#         ), 400
+
+#     array = np.frombuffer(raw, dtype=np.uint8)
+#     decoded = cv2.imdecode(array, cv2.IMREAD_UNCHANGED)
+
+#     if decoded is None:
+#         return jsonify(
+#             ok=False,
+#             error="Could not read the canvas image."
+#         ), 400
+
+#     if decoded.ndim == 2:
+#         image = decoded
+#     elif decoded.shape[2] == 4:
+#         image = cv2.cvtColor(decoded, cv2.COLOR_BGRA2RGBA)
+#     elif decoded.shape[2] == 3:
+#         image = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+#     else:
+#         return jsonify(
+#             ok=False,
+#             error="Unsupported canvas image format."
+#         ), 400
+
+#     result = recognize(image)
+
+#     if result["error"]:
+#         return jsonify(
+#             ok=False,
+#             error=result["error"],
+#             text=result["text"],
+#             confidence=round(result["confidence"] * 100, 2)
+#         ), 400
+
+#     note = {
+#         "id": str(uuid.uuid4()),
+#         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+#         "text": result["text"],
+#         "confidence": round(result["confidence"] * 100, 2)
+#     }
+
+#     notes = load_notes()
+#     notes.append(note)
+
+#     try:
+#         save_notes(notes)
+#     except OSError:
+#         app.logger.exception("Failed to save notes")
+#         return jsonify(
+#             ok=False,
+#             error="Recognition succeeded, but the note could not be saved."
+#         ), 500
+
+#     return jsonify(
+#         ok=True,
+#         note_id=note["id"],
+#         text=note["text"],
+#         confidence=note["confidence"]
+#     )
+
 @app.post("/save")
 def save():
     payload = request.get_json(silent=True) or {}
     data = payload.get("image", "")
 
+    # Validate canvas image
     if not isinstance(data, str) or "," not in data:
         return jsonify(
             ok=False,
             error="Canvas image is missing."
         ), 400
 
+    # Decode the base64 image
     try:
         encoded = data.split(",", 1)[1]
         raw = base64.b64decode(encoded, validate=True)
+
     except (ValueError, base64.binascii.Error):
         return jsonify(
             ok=False,
             error="Invalid canvas image data."
         ), 400
 
-    array = np.frombuffer(raw, dtype=np.uint8)
-    decoded = cv2.imdecode(array, cv2.IMREAD_UNCHANGED)
+    # Read image using OpenCV
+    try:
+        array = np.frombuffer(raw, dtype=np.uint8)
+        decoded = cv2.imdecode(array, cv2.IMREAD_UNCHANGED)
 
-    if decoded is None:
+        if decoded is None:
+            return jsonify(
+                ok=False,
+                error="Could not read the canvas image."
+            ), 400
+
+        # Convert image into RGB format
+        if decoded.ndim == 2:
+            image = decoded
+
+        elif decoded.shape[2] == 4:
+            image = cv2.cvtColor(decoded, cv2.COLOR_BGRA2RGBA)
+
+        elif decoded.shape[2] == 3:
+            image = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+
+        else:
+            return jsonify(
+                ok=False,
+                error="Unsupported canvas image format."
+            ), 400
+
+        # Run handwriting recognition
+        result = recognize(image)
+
+    except Exception:
+        app.logger.exception("Handwriting recognition failed")
         return jsonify(
             ok=False,
-            error="Could not read the canvas image."
-        ), 400
+            error="Handwriting recognition failed. Check the server logs."
+        ), 500
 
-    if decoded.ndim == 2:
-        image = decoded
-    elif decoded.shape[2] == 4:
-        image = cv2.cvtColor(decoded, cv2.COLOR_BGRA2RGBA)
-    elif decoded.shape[2] == 3:
-        image = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
-    else:
-        return jsonify(
-            ok=False,
-            error="Unsupported canvas image format."
-        ), 400
-
-    result = recognize(image)
-
-    if result["error"]:
+    if result.get("error"):
         return jsonify(
             ok=False,
             error=result["error"],
-            text=result["text"],
-            confidence=round(result["confidence"] * 100, 2)
+            text=result.get("text", ""),
+            confidence=round(
+                float(result.get("confidence", 0)) * 100, 2
+            )
         ), 400
 
+    # Prepare the note
     note = {
         "id": str(uuid.uuid4()),
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "text": result["text"],
-        "confidence": round(result["confidence"] * 100, 2)
+        "text": result.get("text", ""),
+        "confidence": round(
+            float(result.get("confidence", 0)) * 100, 2
+        )
     }
 
-    notes = load_notes()
-    notes.append(note)
-
+    # Save note
     try:
+        notes = load_notes()
+        notes.append(note)
         save_notes(notes)
-    except OSError:
-        app.logger.exception("Failed to save notes")
+
+    except Exception:
+        app.logger.exception("Failed to save note")
         return jsonify(
             ok=False,
             error="Recognition succeeded, but the note could not be saved."
         ), 500
 
+    # Return JSON expected by index.html
     return jsonify(
         ok=True,
         note_id=note["id"],
         text=note["text"],
         confidence=note["confidence"]
-    )
+    ), 200
 
 
 @app.route("/notes")
